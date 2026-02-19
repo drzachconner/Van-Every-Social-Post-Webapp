@@ -2,86 +2,127 @@
 
 ## 1. Project Overview
 
-Frontend webapp for Van Every Family Chiropractic Center's social media posting pipeline. Provides a drag-and-drop interface for uploading images/video, previewing AI-generated text overlays and captions, editing per-platform captions, and submitting posts to 7 social platforms. Communicates with the ImageAutomation backend API via fetch calls.
+Frontend webapp for Van Every Family Chiropractic Center's social media posting pipeline. Built with Next.js 14 + TypeScript + Tailwind CSS. Provides a drag-and-drop interface for uploading images/video, previewing AI-generated text overlays and captions, editing per-platform captions, and submitting posts to 7 social platforms. Communicates with the ImageAutomation backend API via fetch calls.
 
 ## 2. Tech Stack
 
 | Component | Technology |
 |-----------|------------|
-| Markup | Vanilla HTML5 |
-| Styling | Vanilla CSS3 (no framework) |
-| Logic | Vanilla JavaScript (ES6+, no build step) |
-| Deployment | Bundled into Modal backend via sync script |
-| API communication | Fetch API to same-origin backend |
+| Framework | Next.js 14 (App Router) |
+| Language | TypeScript (strict mode) |
+| Styling | Tailwind CSS + custom CSS (globals.css) |
+| Build | Static export (`output: 'export'`) |
+| Deployment | Bundled into Modal backend via sync script, or Vercel |
+| API communication | Fetch API via `lib/api.ts` |
 
 ## 3. Architecture
 
 ```
-index.html
-  ├── css/styles.css (all styles, ~700 lines)
-  ├── js/config.js   (API_BASE_URL + PLATFORM_LIMITS)
-  └── js/app.js      (all UI logic, ~1170 lines)
+src/app/page.tsx (main orchestrator — all state lives here)
+  ├── components/UploadZone.tsx      # Image/video dropzones
+  ├── components/MediaThumbnails.tsx  # Drag-to-reorder thumbnails
+  ├── components/Toggle.tsx          # Reusable toggle switch
+  ├── components/PlatformSelector.tsx # Platform checkboxes (video mode)
+  ├── components/PreviewSection.tsx   # Image/video preview + editors
+  ├── components/OverlayEditor.tsx    # Text overlay inputs + font size
+  ├── components/CaptionEditor.tsx    # Per-platform caption textareas
+  ├── components/FontSizeControl.tsx  # Auto/manual font size slider
+  ├── components/JobStatus.tsx        # Job polling with results
+  ├── components/RecentJobs.tsx       # localStorage job history
+  └── components/ConfirmDialog.tsx    # Custom confirm modal
+
+lib/api.ts       # All backend API calls
+lib/constants.ts # Platform limits, loading steps
+lib/types.ts     # TypeScript interfaces
+lib/jobs.ts      # localStorage job management
 
 Data flow:
-  Browser → fetch(API_BASE_URL + '/process') → Backend generates previews
-  Browser → fetch(API_BASE_URL + '/submit-job') → Backend posts to platforms
-  Browser ← poll fetch('/job/{id}') ← Backend returns job status
+  Browser → api.processImages() → Backend generates previews
+  Browser → api.submitImageJob() → Backend posts to platforms (fire-and-forget)
+  Browser ← api.fetchJobStatus() ← Backend returns job status (polled every 5s)
 ```
 
 ### Key Design Patterns
 
-- **No build tools** — vanilla HTML/CSS/JS, no bundler or transpiler
-- **Same-origin API** — `API_BASE_URL = ""` by default (served alongside backend)
-- **Fire-and-forget jobs** — posts are submitted, then polled via job ID
-- **localStorage** — recent jobs stored client-side for quick status checks
-- **Drag-to-reorder** — images/videos can be reordered before submission
+- **Page-level state** — all state in `page.tsx`, passed as props to components
+- **Static export** — `next build` produces static HTML/JS/CSS for Modal or Vercel
+- **Same-origin API** — `NEXT_PUBLIC_API_BASE_URL` env var (empty = same origin)
+- **Fire-and-forget jobs** — posts submitted then polled via job ID
+- **localStorage** — recent jobs stored client-side
+- **Drag-to-reorder** — HTML5 drag API in MediaThumbnails
+- **Custom confirm dialog** — replaces browser `confirm()` for better UX
 
 ## 4. Directory Structure
 
 ```
 .
 ├── .claude/
-│   └── CLAUDE.md         # This file
-├── assets/
-│   └── logo.png          # Van Every logo
-├── css/
-│   └── styles.css        # All styles
-├── js/
-│   ├── config.js         # API_BASE_URL + PLATFORM_LIMITS
-│   └── app.js            # All UI logic
-├── index.html            # Main entry point
-├── .gitignore
-└── README.md
+│   └── CLAUDE.md           # This file
+├── public/
+│   └── logo.png            # Van Every logo
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx      # Root layout (metadata)
+│   │   ├── page.tsx        # Main page (state orchestrator)
+│   │   └── globals.css     # Tailwind + custom styles
+│   ├── components/
+│   │   ├── CaptionEditor.tsx
+│   │   ├── ConfirmDialog.tsx
+│   │   ├── FontSizeControl.tsx
+│   │   ├── JobStatus.tsx
+│   │   ├── MediaThumbnails.tsx
+│   │   ├── OverlayEditor.tsx
+│   │   ├── PlatformSelector.tsx
+│   │   ├── PreviewSection.tsx
+│   │   ├── RecentJobs.tsx
+│   │   ├── Toggle.tsx
+│   │   └── UploadZone.tsx
+│   └── lib/
+│       ├── api.ts          # Backend API client
+│       ├── constants.ts    # Platform limits, loading steps
+│       ├── jobs.ts         # localStorage job management
+│       └── types.ts        # TypeScript interfaces
+├── next.config.mjs         # Static export config
+├── tailwind.config.ts      # Brand colors
+├── tsconfig.json
+├── postcss.config.mjs
+├── package.json
+└── .gitignore
 ```
 
 ## 5. Development Conventions
 
-- **No build step** — edit files directly, refresh browser to test
-- **Naming**: kebab-case for CSS classes, camelCase for JS variables
-- **Config**: All configurable values in `js/config.js`
-- **API calls**: All fetch URLs prefixed with `API_BASE_URL` from config.js
+- **Framework**: Next.js 14 App Router with `'use client'` directive on interactive components
+- **Language**: TypeScript strict mode
+- **Styling**: Tailwind utility classes + custom CSS in globals.css for complex branded elements
+- **State**: useState at page level, props down to components, callbacks up
+- **Naming**: PascalCase for components, camelCase for functions/variables
+- **API calls**: All through `lib/api.ts`, never direct fetch in components
+- **Types**: All shared types in `lib/types.ts`
 
 ## 6. Environment Variables
 
-None. Configuration is in `js/config.js`:
-- `API_BASE_URL` — backend URL (empty string = same origin)
-- `PLATFORM_LIMITS` — character limits per social platform
+| Variable | Purpose |
+|----------|---------|
+| `NEXT_PUBLIC_API_BASE_URL` | Backend URL (empty = same origin) |
 
 ## 7. Workflow
 
 ```bash
-# Local development — open directly in browser
-open index.html
+# Local development (hot reload)
+npm run dev
 
-# Or serve with a simple HTTP server
-python3 -m http.server 8080
+# Build static export
+npm run build
+# Output in out/ directory
 
-# Sync to backend for deployment
+# Sync to backend for Modal deployment
 cd ~/Code/ImageAutomation-ClaudeCode
-./scripts/sync-webapp.sh
+./scripts/sync-webapp.sh   # builds Next.js + copies out/ to webapp/
+./deploy.sh                 # deploys to Modal
 
-# Deploy via backend
-./deploy.sh
+# Deploy to Vercel (alternative)
+# Push to GitHub, Vercel auto-deploys
 ```
 
 ## 8. Known Issues
@@ -89,19 +130,22 @@ cd ~/Code/ImageAutomation-ClaudeCode
 - No offline support — requires backend API to function
 - Large file uploads may time out on slow connections
 - localStorage job history limited to 20 entries
+- `<img>` tags used instead of `next/image` for base64 data URLs from API
 
 ## 9. Security
 
 - No secrets stored in frontend code
-- All API calls are to same-origin backend (no CORS issues in production)
-- User input is not directly injected into DOM without escaping
+- All API calls to same-origin backend (no CORS issues in production)
+- React's JSX escaping prevents XSS by default
+- Environment variables prefixed with `NEXT_PUBLIC_` are safe (no secrets)
 
 ## 10. Subagent Orchestration
 
 | Agent | When to Use |
 |-------|-------------|
-| `browser-navigator` | Test the drag-and-drop UI, verify preview rendering |
-| `frontend` | When adding new UI features or refactoring CSS/JS |
+| `browser-navigator` | Test drag-and-drop UI, verify preview rendering |
+| `frontend` | Adding new React components or modifying Tailwind styles |
+| `pre-push-validator` | Before pushing — lint, type-check, build verification |
 
 ## 11. MCP Connections
 
@@ -109,10 +153,14 @@ None — this is a static frontend. Backend handles all external integrations.
 
 ## 12. Completed Work
 
-- Extracted from ImageAutomation monolith (image_app.py lines 65-2122)
-- Split into clean CSS/HTML/JS files with external references
-- Created js/config.js with API_BASE_URL for future cross-origin support
-- All fetch() calls updated to use API_BASE_URL prefix
+- Extracted from ImageAutomation monolith (2026-02-19)
+- **Next.js conversion (2026-02-19)**: Converted from vanilla HTML/CSS/JS to Next.js 14 + TypeScript + Tailwind
+  - 11 React components ported from 1,157-line app.js
+  - Full TypeScript types for all API responses
+  - API client layer in lib/api.ts
+  - Custom confirm dialog replacing browser confirm()
+  - Static export working for Modal bundle deployment
+  - sync-webapp.sh updated to build Next.js and copy output
 
 ## Brand
 
