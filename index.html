@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Van Every Social Posts</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="container">
+  <h1>Van Every Social Posts</h1>
+  <p class="subtitle">Upload images or video, preview, edit, then post</p>
+
+  <!-- Upload form -->
+  <div id="form-section">
+    <div class="card">
+      <label>Media</label>
+      <div class="dropzone-row">
+        <div class="dropzone" id="image-dropzone">
+          <span class="icon">+</span>
+          <p>Drop images or tap to select</p>
+        </div>
+        <div class="or-divider">OR</div>
+        <div class="dropzone" id="video-dropzone">
+          <span class="icon">&#9658;</span>
+          <p>Drop video(s) or tap to select</p>
+        </div>
+      </div>
+      <input type="file" id="image-file-input" accept="image/*" multiple>
+      <input type="file" id="video-file-input" accept="video/*" multiple>
+      <div class="previews" id="previews"></div>
+      <div id="video-upload-preview" style="display:none;"></div>
+      <div class="file-count" id="file-count"></div>
+      <div class="reorder-hint" id="reorder-hint" style="display:none;">Drag to reorder images</div>
+
+      <!-- Multi-post toggle (shown when 2+ images selected) -->
+      <div id="multi-post-section" class="multi-post-section">
+        <div class="toggle-row" style="margin-top:0;">
+          <div>
+            <div class="toggle-label">Post as individual posts</div>
+            <div class="toggle-desc">Each image gets its own caption, posted hours apart</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="multi-post-toggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="interval-row" id="interval-row" style="display:none;">
+          <label>Hours between posts:</label>
+          <input type="number" id="post-interval" value="3" min="1" max="72" step="1">
+          <span class="unit">hours</span>
+        </div>
+      </div>
+
+      <!-- Video mode toggle (shown when video selected) -->
+      <div id="video-mode-section" class="video-mode-section">
+        <div class="toggle-row" style="margin-top:0;">
+          <div>
+            <div class="toggle-label">Special Office Video</div>
+            <div class="toggle-desc">YouTube unlisted only (no other platforms)</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="special-video-toggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- Platform checkboxes (shown when NOT special video) -->
+        <div id="platform-checkboxes" class="platform-checkboxes active">
+          <h4>Post to platforms:</h4>
+          <div class="platform-checks">
+            <label class="platform-check"><input type="checkbox" value="facebook" checked> Facebook</label>
+            <label class="platform-check"><input type="checkbox" value="instagram" checked> Instagram</label>
+            <label class="platform-check"><input type="checkbox" value="linkedin" checked> LinkedIn</label>
+            <label class="platform-check"><input type="checkbox" value="pinterest" checked> Pinterest</label>
+            <label class="platform-check"><input type="checkbox" value="tiktok" checked> TikTok</label>
+            <label class="platform-check"><input type="checkbox" value="twitter" checked> Twitter/X</label>
+            <label class="platform-check"><input type="checkbox" value="youtube" checked> YouTube</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <label id="description-label">Description</label>
+      <textarea id="description" placeholder="Describe what's in the image(s). AI will use this to generate on-screen text and captions."></textarea>
+
+      <div class="toggle-row" id="text-overlay-row">
+        <div>
+          <div class="toggle-label">Text overlay</div>
+          <div class="toggle-desc">Add text to images with branded styling</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="add-text" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <button class="submit-btn" id="submit-btn" disabled>Generate Preview</button>
+    <div class="error-msg" id="error-msg"></div>
+
+    <!-- Recent jobs (populated from localStorage) -->
+    <div class="card recent-jobs" id="form-recent-jobs" style="display:none;">
+      <h4>Recent Jobs</h4>
+      <div id="form-recent-jobs-list"></div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p id="loading-text">Processing...</p>
+  </div>
+
+  <!-- Preview / Edit / Post section -->
+  <div class="preview-section" id="preview-section">
+    <div class="card">
+      <h2 style="margin-bottom:12px;font-size:1.1rem;">Preview</h2>
+      <div class="preview-images" id="preview-images"></div>
+      <div id="video-preview-container" style="display:none;"></div>
+    </div>
+
+    <div class="card overlay-editor" id="overlay-editor" style="display:none;">
+      <h3>Overlay Text</h3>
+      <div id="overlay-inputs"></div>
+      <div class="font-size-control" id="font-size-control">
+        <label>Font size:</label>
+        <button class="auto-btn active" id="font-auto-btn">Auto</button>
+        <input type="range" id="font-size-slider" min="24" max="120" value="48" step="1">
+        <span class="font-size-value" id="font-size-display">Auto</span>
+      </div>
+    </div>
+
+    <div class="card caption-editor">
+      <h3>Captions by Platform</h3>
+      <div id="caption-inputs"></div>
+    </div>
+
+    <div class="action-buttons">
+      <button class="btn btn-regen" id="regen-btn">Re-Generate Preview</button>
+      <button class="btn btn-post" id="post-btn">Post to All Platforms</button>
+    </div>
+
+    <div class="posting-results card" id="posting-results" style="display:none;">
+      <h3>Posting Results</h3>
+      <div id="result-list"></div>
+    </div>
+
+    <button class="reset-btn" id="reset-btn">Start Over</button>
+  </div>
+
+  <!-- Job Status (fire-and-forget) -->
+  <div class="job-status-section" id="job-status-section">
+    <div class="card">
+      <div id="job-status-content">
+        <div class="job-pending-msg">Job submitted! Processing in background...</div>
+        <p style="color:#888;font-size:0.9rem;margin-bottom:8px;">You can close this page. Come back anytime to check status.</p>
+        <div class="spinner" id="job-spinner"></div>
+      </div>
+      <div id="job-result-content" style="display:none;"></div>
+      <div class="job-id-display" id="job-id-display"></div>
+      <button class="reset-btn" id="job-reset-btn" style="margin-top:16px;">Start New Post</button>
+    </div>
+    <div class="card recent-jobs" id="recent-jobs-section" style="display:none;">
+      <h4>Recent Jobs</h4>
+      <div id="recent-jobs-list"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
