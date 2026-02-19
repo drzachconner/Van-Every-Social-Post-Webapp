@@ -10,6 +10,8 @@ interface OverlayEditorProps {
   fontSizeUsed: number;
   onAutoClick: () => void;
   onSliderChange: (value: number) => void;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
 }
 
 export function OverlayEditor({
@@ -20,6 +22,8 @@ export function OverlayEditor({
   fontSizeUsed,
   onAutoClick,
   onSliderChange,
+  onRegenerate,
+  isRegenerating,
 }: OverlayEditorProps) {
   if (overlayTexts.length === 0) return null;
 
@@ -44,6 +48,15 @@ export function OverlayEditor({
         onAutoClick={onAutoClick}
         onSliderChange={onSliderChange}
       />
+      {onRegenerate && (
+        <button
+          className="btn btn-regen w-full mt-3"
+          disabled={isRegenerating}
+          onClick={onRegenerate}
+        >
+          {isRegenerating ? 'Regenerating...' : 'Re-Generate Preview'}
+        </button>
+      )}
     </div>
   );
 }

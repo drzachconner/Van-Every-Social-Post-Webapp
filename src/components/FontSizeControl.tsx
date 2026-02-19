@@ -32,9 +32,9 @@ export function FontSizeControl({
       </button>
       <input
         type="range"
-        min={24}
-        max={120}
-        value={isFontAuto ? fontSizeUsed || 48 : fontSize}
+        min={100}
+        max={300}
+        value={isFontAuto ? fontSizeUsed || 200 : fontSize}
         step={1}
         onChange={(e) => onSliderChange(parseInt(e.target.value))}
       />

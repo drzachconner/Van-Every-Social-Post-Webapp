@@ -51,8 +51,8 @@ export default function Home() {
   const [videoResults, setVideoResults] = useState<VideoResult[]>([]);
 
   // --- Font size ---
-  const [isFontAuto, setIsFontAuto] = useState(true);
-  const [currentFontSize, setCurrentFontSize] = useState(0);
+  const [isFontAuto, setIsFontAuto] = useState(false);
+  const [currentFontSize, setCurrentFontSize] = useState(200);
   const [fontSizeUsed, setFontSizeUsed] = useState(0);
 
   // --- Job state ---

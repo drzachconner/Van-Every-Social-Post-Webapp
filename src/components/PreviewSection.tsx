@@ -114,6 +114,8 @@ export function PreviewSection({
           fontSizeUsed={fontSizeUsed}
           onAutoClick={onAutoClick}
           onSliderChange={onSliderChange}
+          onRegenerate={onRegenerate}
+          isRegenerating={isRegenerating}
         />
       )}
 
