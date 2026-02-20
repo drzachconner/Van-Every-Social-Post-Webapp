@@ -42,10 +42,12 @@ export function JobStatus({ jobId, onReset, onJobUpdate }: JobStatusProps) {
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failCountRef = useRef(0);
 
   const poll = useCallback(async () => {
     try {
       const data = await fetchJobStatus(jobId);
+      failCountRef.current = 0;
       const status = data.status || 'pending';
       updateJobStatus(jobId, status);
       onJobUpdate();
@@ -60,7 +62,13 @@ export function JobStatus({ jobId, onReset, onJobUpdate }: JobStatusProps) {
       setStatusMessage(STATUS_MESSAGES[status] || 'Working...');
       pollingRef.current = setTimeout(poll, 5000);
     } catch {
-      setError('Error checking status');
+      failCountRef.current += 1;
+      if (failCountRef.current >= 3) {
+        setError('Error checking job status. The job may still be running.');
+      } else {
+        // Tolerate transient failures — keep polling
+        pollingRef.current = setTimeout(poll, 5000);
+      }
     }
   }, [jobId, onJobUpdate]);
 

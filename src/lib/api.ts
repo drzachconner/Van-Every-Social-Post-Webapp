@@ -1,6 +1,29 @@
 import { API_BASE_URL } from './constants';
 import type { ProcessResponse, RegenerateResponse, VideoResult, JobData } from './types';
 
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+async function safeJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Server returned non-JSON response: ${text.substring(0, 200)}`);
+  }
+}
+
 export async function processImages(
   files: File[],
   description: string,
@@ -15,17 +38,17 @@ export async function processImages(
   if (multiPost) formData.append('multi_post', '1');
   if (fontSize > 0) formData.append('font_size', fontSize.toString());
 
-  const response = await fetch(`${API_BASE_URL}/process`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/process`, {
     method: 'POST',
     body: formData,
-  });
+  }, 60_000);
 
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(errText || `Server error ${response.status}`);
   }
 
-  return response.json();
+  return safeJson<ProcessResponse>(response);
 }
 
 export async function regeneratePreview(
@@ -40,17 +63,17 @@ export async function regeneratePreview(
   formData.append('description', description);
   if (fontSize > 0) formData.append('font_size', fontSize.toString());
 
-  const response = await fetch(`${API_BASE_URL}/regenerate`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/regenerate`, {
     method: 'POST',
     body: formData,
-  });
+  }, 30_000);
 
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(errText || `Server error ${response.status}`);
   }
 
-  return response.json();
+  return safeJson<RegenerateResponse>(response);
 }
 
 export async function processVideo(
@@ -63,17 +86,17 @@ export async function processVideo(
   if (description) formData.append('description', description);
   if (isSpecial) formData.append('special_video', '1');
 
-  const response = await fetch(`${API_BASE_URL}/process-video`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
     method: 'POST',
     body: formData,
-  });
+  }, 720_000);
 
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(errText || `Server error ${response.status}`);
   }
 
-  return response.json();
+  return safeJson<VideoResult>(response);
 }
 
 export async function submitImageJob(
@@ -105,17 +128,17 @@ export async function submitImageJob(
     formData.append('font_size', options.fontSize.toString());
   }
 
-  const response = await fetch(`${API_BASE_URL}/submit-job`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/submit-job`, {
     method: 'POST',
     body: formData,
-  });
+  }, 120_000);
 
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(errText || 'Server error');
   }
 
-  return response.json();
+  return safeJson<{ job_id: string }>(response);
 }
 
 export async function submitVideoJob(options: {
@@ -139,22 +162,49 @@ export async function submitVideoJob(options: {
   if (options.platforms) body.platforms = options.platforms;
   if (options.youtubePrivacy) body.youtube_privacy = options.youtubePrivacy;
 
-  const response = await fetch(`${API_BASE_URL}/submit-video-job`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/submit-video-job`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  });
+  }, 30_000);
 
   if (!response.ok) {
     const errText = await response.text();
     throw new Error(errText || 'Server error');
   }
 
-  return response.json();
+  return safeJson<{ job_id: string }>(response);
 }
 
 export async function fetchJobStatus(jobId: string): Promise<JobData> {
-  const response = await fetch(`${API_BASE_URL}/job/${jobId}`);
-  if (!response.ok) throw new Error('Job not found');
-  return response.json();
+  const maxAttempts = 3;
+  let delay = 2000;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const response = await fetchWithTimeout(
+      `${API_BASE_URL}/job/${jobId}`,
+      {},
+      10_000
+    );
+
+    if (response.ok) {
+      return safeJson<JobData>(response);
+    }
+
+    // Don't retry on 404
+    if (response.status === 404) {
+      throw new Error('Job not found');
+    }
+
+    // Retry on 500/503
+    if ((response.status === 500 || response.status === 503) && attempt < maxAttempts - 1) {
+      await new Promise(r => setTimeout(r, delay));
+      delay *= 2;
+      continue;
+    }
+
+    throw new Error(`Job status error: ${response.status}`);
+  }
+
+  throw new Error('Job status check failed after retries');
 }
