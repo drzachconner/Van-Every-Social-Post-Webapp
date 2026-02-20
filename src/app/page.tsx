@@ -132,10 +132,10 @@ export default function Home() {
 
   const submitButtonText = isVideoMode
     ? isSpecialVideoMode
-      ? 'Process Special Video'
+      ? 'Preview Special Video'
       : videoFiles.length > 1
-        ? 'Process Videos'
-        : 'Process Video'
+        ? 'Preview Videos'
+        : 'Preview Video'
     : 'Generate Preview';
 
   // --- Process Images ---
