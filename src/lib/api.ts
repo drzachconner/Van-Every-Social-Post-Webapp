@@ -76,45 +76,67 @@ export async function regeneratePreview(
   return safeJson<RegenerateResponse>(response);
 }
 
+async function uploadToLitterbox(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('reqtype', 'fileupload');
+  formData.append('time', '1h');
+  formData.append('fileToUpload', file);
+
+  const response = await fetch('https://litterbox.catbox.moe/resources/serverside/llUpload.php', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Litterbox upload failed: ${response.status}`);
+  }
+
+  const url = await response.text();
+  if (!url.startsWith('http')) {
+    throw new Error(`Litterbox returned unexpected response: ${url.substring(0, 200)}`);
+  }
+  return url.trim();
+}
+
 export async function processVideo(
   file: File,
   description: string,
   isSpecial: boolean
 ): Promise<VideoResult> {
-  // Check file size before uploading — Modal has ~100MB request limit
-  const maxSizeMB = 95;
   const fileSizeMB = file.size / (1024 * 1024);
-  if (fileSizeMB > maxSizeMB) {
+
+  // Reject extremely large files (litterbox limit is 1GB)
+  if (fileSizeMB > 1000) {
     throw new Error(
-      `Video is too large (${fileSizeMB.toFixed(0)}MB). Maximum is ${maxSizeMB}MB. Try trimming or compressing the video first.`
+      `Video is too large (${fileSizeMB.toFixed(0)}MB). Maximum is 1GB. Try trimming or compressing first.`
     );
   }
 
-  const formData = new FormData();
-  formData.append('video', file);
-  if (description) formData.append('description', description);
-  if (isSpecial) formData.append('special_video', '1');
-
-  let response: Response;
+  // Step 1: Upload video directly to litterbox (bypasses Modal's request size limit)
+  let videoUrl: string;
   try {
-    response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
-      method: 'POST',
-      body: formData,
-    }, 720_000);
+    videoUrl = await uploadToLitterbox(file);
   } catch (err) {
-    // Safari/iOS returns "Load Failed" when upload connection drops
     const msg = err instanceof Error ? err.message : '';
     if (msg.includes('Load Failed') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
       throw new Error(
-        `Upload failed — the video may be too large or your connection dropped. ` +
+        `Video upload failed — your connection may have dropped. ` +
         `Video size: ${fileSizeMB.toFixed(0)}MB. Try on Wi-Fi or with a smaller file.`
       );
     }
-    if (msg.includes('aborted')) {
-      throw new Error('Upload timed out. Try a smaller video or a faster connection.');
-    }
-    throw err;
+    throw new Error(`Video upload failed: ${msg}`);
   }
+
+  // Step 2: Send URL to backend for processing (lightweight JSON request)
+  const response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      video_url: videoUrl,
+      description: description || '',
+      special_video: isSpecial,
+    }),
+  }, 720_000);
 
   if (!response.ok) {
     const errText = await response.text();
