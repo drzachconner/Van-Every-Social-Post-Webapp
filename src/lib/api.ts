@@ -81,15 +81,40 @@ export async function processVideo(
   description: string,
   isSpecial: boolean
 ): Promise<VideoResult> {
+  // Check file size before uploading — Modal has ~100MB request limit
+  const maxSizeMB = 95;
+  const fileSizeMB = file.size / (1024 * 1024);
+  if (fileSizeMB > maxSizeMB) {
+    throw new Error(
+      `Video is too large (${fileSizeMB.toFixed(0)}MB). Maximum is ${maxSizeMB}MB. Try trimming or compressing the video first.`
+    );
+  }
+
   const formData = new FormData();
   formData.append('video', file);
   if (description) formData.append('description', description);
   if (isSpecial) formData.append('special_video', '1');
 
-  const response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
-    method: 'POST',
-    body: formData,
-  }, 720_000);
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
+      method: 'POST',
+      body: formData,
+    }, 720_000);
+  } catch (err) {
+    // Safari/iOS returns "Load Failed" when upload connection drops
+    const msg = err instanceof Error ? err.message : '';
+    if (msg.includes('Load Failed') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+      throw new Error(
+        `Upload failed — the video may be too large or your connection dropped. ` +
+        `Video size: ${fileSizeMB.toFixed(0)}MB. Try on Wi-Fi or with a smaller file.`
+      );
+    }
+    if (msg.includes('aborted')) {
+      throw new Error('Upload timed out. Try a smaller video or a faster connection.');
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     const errText = await response.text();
