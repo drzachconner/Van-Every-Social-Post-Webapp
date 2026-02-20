@@ -1,6 +1,10 @@
 import { API_BASE_URL } from './constants';
 import type { ProcessResponse, RegenerateResponse, VideoResult, JobData } from './types';
 
+// =============================================================================
+// Core utilities
+// =============================================================================
+
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
@@ -23,6 +27,120 @@ async function safeJson<T>(response: Response): Promise<T> {
     throw new Error(`Server returned non-JSON response: ${text.substring(0, 200)}`);
   }
 }
+
+// =============================================================================
+// Video upload cascade — 3 independent paths with retry on each
+// =============================================================================
+
+/** Upload to litterbox directly from browser (up to 1GB, 1h expiry) */
+async function uploadToLitterbox(file: File): Promise<string> {
+  const form = new FormData();
+  form.append('reqtype', 'fileupload');
+  form.append('time', '1h');
+  form.append('fileToUpload', file);
+
+  const resp = await fetch(
+    'https://litterbox.catbox.moe/resources/serverside/llUpload.php',
+    { method: 'POST', body: form }
+  );
+  if (!resp.ok) throw new Error(`litterbox HTTP ${resp.status}`);
+  const url = (await resp.text()).trim();
+  if (!url.startsWith('http')) throw new Error(`litterbox bad response: ${url.substring(0, 100)}`);
+  return url;
+}
+
+/** Upload to catbox directly from browser (up to 200MB, permanent) */
+async function uploadToCatbox(file: File): Promise<string> {
+  const form = new FormData();
+  form.append('reqtype', 'fileupload');
+  form.append('fileToUpload', file);
+
+  const resp = await fetch(
+    'https://catbox.moe/user/api.php',
+    { method: 'POST', body: form }
+  );
+  if (!resp.ok) throw new Error(`catbox HTTP ${resp.status}`);
+  const url = (await resp.text()).trim();
+  if (!url.startsWith('http')) throw new Error(`catbox bad response: ${url.substring(0, 100)}`);
+  return url;
+}
+
+/** Upload through our backend proxy (streams to litterbox server-side) */
+async function uploadViaProxy(file: File): Promise<string> {
+  const form = new FormData();
+  form.append('file', file);
+
+  const resp = await fetchWithTimeout(
+    `${API_BASE_URL}/upload-proxy`,
+    { method: 'POST', body: form },
+    300_000 // 5 min for large files
+  );
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`proxy upload HTTP ${resp.status}: ${errText.substring(0, 200)}`);
+  }
+  const data = await safeJson<{ url: string }>(resp);
+  return data.url;
+}
+
+/** Retry a single upload function up to `tries` times */
+async function withRetry(
+  fn: () => Promise<string>,
+  tries: number,
+  label: string
+): Promise<string> {
+  let lastErr: Error | null = null;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      console.warn(`${label} attempt ${i + 1}/${tries} failed: ${lastErr.message}`);
+      if (i < tries - 1) await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+    }
+  }
+  throw lastErr!;
+}
+
+/**
+ * Upload a file with full cascade: litterbox → catbox → backend proxy.
+ * Each host gets 2 attempts. If all 3 hosts fail, throws with details.
+ */
+async function uploadFileWithCascade(file: File): Promise<string> {
+  const errors: string[] = [];
+
+  // Path 1: Litterbox (1GB limit, best for large videos)
+  try {
+    return await withRetry(() => uploadToLitterbox(file), 2, 'litterbox');
+  } catch (err) {
+    errors.push(`litterbox: ${err instanceof Error ? err.message : err}`);
+  }
+
+  // Path 2: Catbox (200MB limit, permanent URLs)
+  if (file.size <= 200 * 1024 * 1024) {
+    try {
+      return await withRetry(() => uploadToCatbox(file), 2, 'catbox');
+    } catch (err) {
+      errors.push(`catbox: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // Path 3: Backend proxy (uploads to litterbox server-side, bypasses CORS)
+  try {
+    return await withRetry(() => uploadViaProxy(file), 2, 'proxy');
+  } catch (err) {
+    errors.push(`proxy: ${err instanceof Error ? err.message : err}`);
+  }
+
+  throw new Error(
+    `All upload methods failed. Try a different network or smaller file.\n` +
+    errors.map(e => `  - ${e}`).join('\n')
+  );
+}
+
+// =============================================================================
+// Image endpoints
+// =============================================================================
 
 export async function processImages(
   files: File[],
@@ -76,58 +194,28 @@ export async function regeneratePreview(
   return safeJson<RegenerateResponse>(response);
 }
 
-async function uploadToLitterbox(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append('reqtype', 'fileupload');
-  formData.append('time', '1h');
-  formData.append('fileToUpload', file);
-
-  const response = await fetch('https://litterbox.catbox.moe/resources/serverside/llUpload.php', {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error(`Litterbox upload failed: ${response.status}`);
-  }
-
-  const url = await response.text();
-  if (!url.startsWith('http')) {
-    throw new Error(`Litterbox returned unexpected response: ${url.substring(0, 200)}`);
-  }
-  return url.trim();
-}
+// =============================================================================
+// Video endpoints — uses upload cascade
+// =============================================================================
 
 export async function processVideo(
   file: File,
   description: string,
   isSpecial: boolean
 ): Promise<VideoResult> {
+  // Hard limit — no host accepts >1GB
   const fileSizeMB = file.size / (1024 * 1024);
-
-  // Reject extremely large files (litterbox limit is 1GB)
   if (fileSizeMB > 1000) {
     throw new Error(
-      `Video is too large (${fileSizeMB.toFixed(0)}MB). Maximum is 1GB. Try trimming or compressing first.`
+      `Video is too large (${fileSizeMB.toFixed(0)}MB). Maximum is 1GB. ` +
+      `Try trimming or compressing first.`
     );
   }
 
-  // Step 1: Upload video directly to litterbox (bypasses Modal's request size limit)
-  let videoUrl: string;
-  try {
-    videoUrl = await uploadToLitterbox(file);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '';
-    if (msg.includes('Load Failed') || msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
-      throw new Error(
-        `Video upload failed — your connection may have dropped. ` +
-        `Video size: ${fileSizeMB.toFixed(0)}MB. Try on Wi-Fi or with a smaller file.`
-      );
-    }
-    throw new Error(`Video upload failed: ${msg}`);
-  }
+  // Step 1: Upload video via cascade (litterbox → catbox → backend proxy)
+  const videoUrl = await uploadFileWithCascade(file);
 
-  // Step 2: Send URL to backend for processing (lightweight JSON request)
+  // Step 2: Send URL to backend for processing (tiny JSON payload)
   const response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -145,6 +233,10 @@ export async function processVideo(
 
   return safeJson<VideoResult>(response);
 }
+
+// =============================================================================
+// Job submission endpoints
+// =============================================================================
 
 export async function submitImageJob(
   files: File[],
@@ -223,6 +315,10 @@ export async function submitVideoJob(options: {
   return safeJson<{ job_id: string }>(response);
 }
 
+// =============================================================================
+// Job status polling — with retry
+// =============================================================================
+
 export async function fetchJobStatus(jobId: string): Promise<JobData> {
   const maxAttempts = 3;
   let delay = 2000;
@@ -238,12 +334,10 @@ export async function fetchJobStatus(jobId: string): Promise<JobData> {
       return safeJson<JobData>(response);
     }
 
-    // Don't retry on 404
     if (response.status === 404) {
       throw new Error('Job not found');
     }
 
-    // Retry on 500/503
     if ((response.status === 500 || response.status === 503) && attempt < maxAttempts - 1) {
       await new Promise(r => setTimeout(r, delay));
       delay *= 2;
