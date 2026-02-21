@@ -300,6 +300,7 @@ export default function Home() {
             video_url: result.video_url,
             title: result.title || '',
             platform_captions: captions,
+            thumbnail_url: result.thumbnail_url,
           };
         });
 

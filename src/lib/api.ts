@@ -285,6 +285,7 @@ export async function submitVideoJob(options: {
     video_url: string;
     title: string;
     platform_captions: Record<string, string>;
+    thumbnail_url?: string;
   }>;
   intervalHours: number;
   multiPost: boolean;

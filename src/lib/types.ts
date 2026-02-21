@@ -39,6 +39,8 @@ export interface RegenerateResponse {
 export interface VideoResult {
   success: boolean;
   video_url: string;
+  thumbnail_url?: string;
+  template_used?: string;
   title: string;
   transcript?: string;
   platform_captions: PlatformCaptions;
