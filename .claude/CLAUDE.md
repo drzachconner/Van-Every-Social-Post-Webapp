@@ -117,7 +117,7 @@ npm run build
 # Output in out/ directory
 
 # Sync to backend for Modal deployment
-cd ~/Code/ImageAutomation-ClaudeCode
+cd ~/Code/Social-Media-Automation/ImageAutomation-ClaudeCode
 ./scripts/sync-webapp.sh   # builds Next.js + copies out/ to webapp/
 ./deploy.sh                 # deploys to Modal
 
@@ -147,7 +147,27 @@ cd ~/Code/ImageAutomation-ClaudeCode
 | `frontend` | Adding new React components or modifying Tailwind styles |
 | `pre-push-validator` | Before pushing — lint, type-check, build verification |
 
-## 11. MCP Connections
+## 11. GSD + Teams Strategy
+
+**Project complexity:** Low — single Next.js static export webapp with no backend logic. Work is typically small, sequential, and self-contained within this repo.
+
+**GSD usage:** GSD is not actively used for this project. Changes are usually incremental UI improvements or component additions that do not require multi-phase planning. For larger refactors (e.g., adding a new workflow section), a single GSD phase may be appropriate.
+
+**Agent Teams usage:** Not needed for this project's scope. All state lives in `page.tsx` and data flows strictly downward — there are no parallel-safe modules large enough to warrant splitting across teammates.
+
+| Phase | Work | Team Approach |
+|-------|------|---------------|
+| Add new component | New React component + wiring to page.tsx | Main agent (sequential state coupling) |
+| Style/Tailwind changes | Tailwind utility class updates | Main agent |
+| API client changes | Modify `lib/api.ts` | Main agent (shared by all components) |
+| Full UI redesign | Multiple components + globals.css | Main agent (small surface area) |
+
+**Context management:**
+- `page.tsx` is the coupling point — all state lives here; any teammate touching components also needs this file
+- `lib/api.ts` is shared — avoid parallel edits
+- Use `/gsd:resume-work` if resuming multi-session work
+
+## 12. MCP Connections
 
 None — this is a static frontend. Backend handles all external integrations.
 
