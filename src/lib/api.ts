@@ -212,10 +212,47 @@ export async function processVideo(
     );
   }
 
-  // Step 1: Upload video via cascade (litterbox → catbox → backend proxy)
+  // Primary: upload video directly to backend via multipart form.
+  // The backend handles temp host upload server-side (no CORS issues,
+  // no iOS Safari memory limits). This was the original approach that
+  // worked reliably for all file sizes.
+  try {
+    const formData = new FormData();
+    formData.append('video', file);
+    if (description) formData.append('description', description);
+    if (isSpecial) formData.append('special_video', '1');
+
+    const response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
+      method: 'POST',
+      body: formData,
+    }, 720_000); // 12 min timeout for large videos
+
+    if (response.ok) {
+      return safeJson<VideoResult>(response);
+    }
+
+    const errText = await response.text();
+    // If backend rejected due to size, fall through to cascade
+    if (response.status === 413) {
+      console.warn('Backend rejected file size, trying upload cascade...');
+    } else {
+      throw new Error(errText || `Server error ${response.status}`);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    // Only fall through to cascade on upload/network failures, not server errors
+    if (!msg.includes('Load failed') && !msg.includes('Failed to fetch') &&
+        !msg.includes('NetworkError') && !msg.includes('aborted') &&
+        !msg.includes('rejected file size')) {
+      throw err;
+    }
+    console.warn('Direct upload failed, trying upload cascade...', msg);
+  }
+
+  // Fallback: upload to temp host first, then send URL to backend.
+  // Used when direct upload fails (e.g., request body too large for proxy).
   const videoUrl = await uploadFileWithCascade(file);
 
-  // Step 2: Send URL to backend for processing (tiny JSON payload)
   const response = await fetchWithTimeout(`${API_BASE_URL}/process-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
