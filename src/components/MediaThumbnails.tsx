@@ -10,20 +10,59 @@ interface MediaThumbnailsProps {
   onReorder: (fromIndex: number, toIndex: number) => void;
 }
 
+function isHeic(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return name.endsWith('.heic') || name.endsWith('.heif') || file.type === 'image/heic' || file.type === 'image/heif';
+}
+
 export function MediaThumbnails({ files, mediaType, onRemove, onReorder }: MediaThumbnailsProps) {
   const [dragSrcIndex, setDragSrcIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [objectUrls, setObjectUrls] = useState<string[]>([]);
-  const [failedUrls, setFailedUrls] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    if (mediaType === 'image') {
-      const urls = files.map(f => URL.createObjectURL(f));
-      setObjectUrls(urls);
-      setFailedUrls(new Set());
-      return () => urls.forEach(url => URL.revokeObjectURL(url));
+    if (mediaType !== 'image' || files.length === 0) {
+      setObjectUrls([]);
+      return;
     }
-    setObjectUrls([]);
+
+    let cancelled = false;
+    const urls: string[] = [];
+
+    async function createUrls() {
+      const results: string[] = [];
+      for (const file of files) {
+        if (cancelled) return;
+        if (isHeic(file)) {
+          try {
+            const heic2any = (await import('heic2any')).default;
+            const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.5 });
+            const converted = Array.isArray(blob) ? blob[0] : blob;
+            const url = URL.createObjectURL(converted);
+            urls.push(url);
+            results.push(url);
+          } catch {
+            // Conversion failed — create URL from original (may work on Safari)
+            const url = URL.createObjectURL(file);
+            urls.push(url);
+            results.push(url);
+          }
+        } else {
+          const url = URL.createObjectURL(file);
+          urls.push(url);
+          results.push(url);
+        }
+      }
+      if (!cancelled) {
+        setObjectUrls(results);
+      }
+    }
+
+    createUrls();
+    return () => {
+      cancelled = true;
+      urls.forEach(url => URL.revokeObjectURL(url));
+    };
   }, [files, mediaType]);
 
   const handleDragStart = useCallback((e: DragEvent, index: number) => {
@@ -70,19 +109,16 @@ export function MediaThumbnails({ files, mediaType, onRemove, onReorder }: Media
           >
             {mediaType === 'video' ? (
               <div className="video-thumb">&#9658;</div>
+            ) : objectUrls[i] ? (
+              <img
+                src={objectUrls[i]}
+                alt={file.name}
+                className="thumb"
+              />
             ) : (
-              objectUrls[i] && !failedUrls.has(i) ? (
-                <img
-                  src={objectUrls[i]}
-                  alt={file.name}
-                  className="thumb"
-                  onError={() => setFailedUrls(prev => new Set(prev).add(i))}
-                />
-              ) : (
-                <div className="thumb flex items-center justify-center bg-[#f5f0eb] rounded-lg text-[0.6rem] text-[#888] text-center p-1 overflow-hidden">
-                  {file.name.length > 15 ? file.name.slice(0, 12) + '...' : file.name}
-                </div>
-              )
+              <div className="thumb flex items-center justify-center bg-[#f5f0eb] rounded-lg">
+                <div className="w-5 h-5 border-2 border-[#c77e7e] border-t-transparent rounded-full animate-spin" />
+              </div>
             )}
             <button
               className="thumb-delete"
