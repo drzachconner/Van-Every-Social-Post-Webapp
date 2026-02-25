@@ -2,11 +2,27 @@ import type { SavedJob } from './types';
 
 const STORAGE_KEY = 've_jobs';
 const MAX_JOBS = 20;
+const STALE_MINUTES = 30;
 
 export function getSavedJobs(): SavedJob[] {
   if (typeof window === 'undefined') return [];
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const jobs: SavedJob[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    let changed = false;
+    const now = Date.now();
+    for (const job of jobs) {
+      if (
+        (job.status === 'pending' || job.status === 'processing') &&
+        now - new Date(job.time).getTime() > STALE_MINUTES * 60 * 1000
+      ) {
+        job.status = 'failed';
+        changed = true;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(jobs));
+    }
+    return jobs;
   } catch {
     return [];
   }
