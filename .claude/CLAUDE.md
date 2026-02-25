@@ -1,5 +1,12 @@
 # Van Every Social Post Webapp
 
+## Workflow Rules
+- **ALWAYS pull before working**: Run `git pull --rebase` before making any changes. This is mandatory for multi-machine sync.
+- **ALWAYS commit and push after making changes.** After completing ANY code changes, immediately stage modified files by name, commit with a descriptive message, and push. Every change must end with a successful `git push`.
+- **Never leave files behind.** Before ending any session, run `git status` and confirm zero untracked or modified files.
+- Never use `git add .` or `git add -A` — always add specific files by name.
+- Commit message format: conventional commits (feat:, fix:, chore:, docs:). Always include `Co-Authored-By: Claude <noreply@anthropic.com>`.
+
 ## 1. Project Overview
 
 Frontend webapp for Van Every Family Chiropractic Center's social media posting pipeline. Built with Next.js 14 + TypeScript + Tailwind CSS. Provides a drag-and-drop interface for uploading images/video, previewing AI-generated text overlays and captions, editing per-platform captions, and submitting posts to 7 social platforms. Communicates with the ImageAutomation backend API via fetch calls.
