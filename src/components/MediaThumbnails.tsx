@@ -14,11 +14,13 @@ export function MediaThumbnails({ files, mediaType, onRemove, onReorder }: Media
   const [dragSrcIndex, setDragSrcIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [objectUrls, setObjectUrls] = useState<string[]>([]);
+  const [failedUrls, setFailedUrls] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (mediaType === 'image') {
       const urls = files.map(f => URL.createObjectURL(f));
       setObjectUrls(urls);
+      setFailedUrls(new Set());
       return () => urls.forEach(url => URL.revokeObjectURL(url));
     }
     setObjectUrls([]);
@@ -69,12 +71,17 @@ export function MediaThumbnails({ files, mediaType, onRemove, onReorder }: Media
             {mediaType === 'video' ? (
               <div className="video-thumb">&#9658;</div>
             ) : (
-              objectUrls[i] && (
+              objectUrls[i] && !failedUrls.has(i) ? (
                 <img
                   src={objectUrls[i]}
                   alt={file.name}
                   className="thumb"
+                  onError={() => setFailedUrls(prev => new Set(prev).add(i))}
                 />
+              ) : (
+                <div className="thumb flex items-center justify-center bg-[#f5f0eb] rounded-lg text-[0.6rem] text-[#888] text-center p-1 overflow-hidden">
+                  {file.name.length > 15 ? file.name.slice(0, 12) + '...' : file.name}
+                </div>
               )
             )}
             <button
