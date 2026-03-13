@@ -93,6 +93,18 @@ export function PreviewSection({
                   controls
                   src={result.video_url}
                 />
+                {result.thumbnail_url && (
+                  <div className="mt-3 mb-2">
+                    <div className="text-[0.8rem] font-semibold text-brand-charcoal mb-1.5">
+                      Cover Image
+                    </div>
+                    <img
+                      src={result.thumbnail_url}
+                      alt="Video thumbnail"
+                      className="rounded-lg border border-[#e0d5cc] max-h-[320px] mx-auto"
+                    />
+                  </div>
+                )}
                 {result.processing_time && (
                   <div className="text-[0.8rem] text-[#888] mb-3">
                     Processed in {Math.round(result.processing_time)}s
